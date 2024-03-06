@@ -19,10 +19,23 @@ loss_fn = nn.CrossEntropyLoss()
 optimizer = optim.SGD(cnn_model.parameters(), lr=0.001, momentum=0.9)
 device = torch.device("cpu")
 
-cnn_model.train()
-for epoch in range(10):
+def compute_accuracy():
+    cnn_model.eval()
+    correct, total = 0, 0
+    with torch.no_grad():
+        for images, labels in test_loader:
+            outputs = cnn_model(images)
+            _, predicted = torch.max(outputs.data, 1)
+            total += labels.size(0)
+            correct += (predicted == labels).sum().item()
+
+    print(f"Accuracy: {correct / total * 100:.2f}%")
+
+
+for epoch in range(30):
 
     loss = 0
+    cnn_model.train()
     for images, labels in train_loader:
         optimizer.zero_grad()
         out = cnn_model(images)
@@ -32,15 +45,7 @@ for epoch in range(10):
 
     print(f"Running epoch: {epoch} | Loss: {loss.item()}")
 
+    if epoch % 5 == 0 and epoch != 0:
+        compute_accuracy()
 
-
-cnn_model.eval()
-correct, total = 0, 0
-with torch.no_grad():
-    for images, labels in test_loader:
-        outputs = cnn_model(images)
-        _, predicted = torch.max(outputs.data, 1)
-        total += labels.size(0)
-        correct += (predicted == labels).sum().item()
-
-print(f"Accuracy: {correct / total * 100:.2f}%")
+compute_accuracy()
