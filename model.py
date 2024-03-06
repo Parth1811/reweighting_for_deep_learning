@@ -1,5 +1,6 @@
 import torch
-import torch.nn as nn
+from torch import nn
+from torchvision import transforms
 
 first_layer_size = 32
 second_layer_size = 64
@@ -21,6 +22,14 @@ class myCNN(nn.Module):
         x1 = self.pool(torch.relu(self.conv_layer_1(x)))
         x2 = self.pool(torch.relu(self.conv_layer_2(x1)))
         x3 = self.pool(torch.relu(self.conv_layer_3(x2)))
-        x4 = x3.view(-1, 128 * 4 * 4)
+        x4 = x3.view(-1, third_layer_size * 4 * 4)
         x5 = torch.relu(self.fc1(x4))
         return self.fc2(x5)
+    
+    @staticmethod
+    def get_input_transform(mean, cov):
+        return transforms.Compose([
+            transforms.Resize((first_layer_size, first_layer_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, cov)
+        ])
