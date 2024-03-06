@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler, Subset
 from sklearn.model_selection import train_test_split
 import numpy as np
 import random
-
+import higher 
 from loss import get_weighted_loss
 from model import myCNN
 from dataloaders import ImbalancedCIFAR10Dataset
@@ -74,59 +74,60 @@ def compute_accuracy():
     print(f"Accuracy: {correct / total * 100:.2f}%")
 
 
-for epoch in range(30):
+cnn_model = myCNN()#.to(device)
+optimizer = optim.SGD(cnn_model.parameters(), lr=0.001, momentum=0.9)
+loss_fn = nn.CrossEntropyLoss()
 
-    loss = 0
+# Assume train_loader, val_loader are defined and loaded with your datasets
+
+for epoch in range(60):
     cnn_model.train()
 
-
-    # TODO(@Parth): This only in case of CIFAR-10 where validation set only has one mini batch.
-    #               Need to figure out a way to get random samples from the val_loader
-    val_img, val_labels = next(iter(val_loader))
-
     for img, labels in train_loader:
+        #img, labels = img.to(device), labels.to(device)
 
-        optimizer.zero_grad()
-        out = cnn_model(img)
-        loss = weighted_loss_fn(out, labels)
-        current_params = [param.clone().detach() for param in cnn_model.parameters()]
-        loss.backward()
-        optimizer.step()
-        grads_a = [param.grad for param in cnn_model.parameters()]
-
-
-
-        optimizer.zero_grad()
-        val_out = cnn_model(val_img)
-        loss = unweighted_loss_fn(val_out, val_labels)
-        loss.backward()
-        optimizer.step()
-        grads_b = [param.grad for param in cnn_model.parameters()]
-
-        grads_ex_wts = torch.autograd.grad(grads_a, [class_weights], grads_b, create_graph=True)
-
-
-        weights = torch.max(-grads_ex_wts, 0)
-        weights_norm = torch.sum(weights)
-        weights_norm = weights_norm if weights_norm != 0 else 0
-        class_weights = weights / weights_norm
-
-
-        class_weights, weighted_loss_fn = get_weighted_loss(class_weights)
+        # Initialize eps for each example in the batch to be learnable
+        eps = torch.zeros(img.size(0), requires_grad=True, device=device)
         
-        with torch.no_grad():
-            for param, current_param in zip(cnn_model.parameters(), current_params):
-                param.copy_(current_param)
-
         optimizer.zero_grad()
-        out = cnn_model(img)
-        loss = weighted_loss_fn(out, labels)
-        current_params = [param.clone().detach() for param in cnn_model.parameters()]
-        loss.backward()
+
+        with higher.innerloop_ctx(cnn_model, optimizer) as (meta_model, meta_opt):
+            # Forward pass on the meta-model with training data
+            meta_outputs = meta_model(img)
+            loss_fn.reduction = 'none'
+            meta_loss = loss_fn(meta_outputs, labels)
+
+            # Use eps to modulate loss
+            weighted_meta_loss = torch.sum(eps * meta_loss)
+
+            # Step through meta-optimizer
+            meta_opt.step(weighted_meta_loss)
+
+            # Now compute validation loss
+            val_img, val_labels = next(iter(val_loader))  # Assuming sufficient validation data
+            val_img, val_labels = val_img, val_labels
+            val_outputs = meta_model(val_img)
+            loss_fn.reduction = 'mean'
+            val_loss = loss_fn(val_outputs, val_labels)
+
+            # Compute gradients of eps based on validation loss
+            eps_grads = torch.autograd.grad(val_loss, eps)[0].detach()
+        
+        # Use eps_grads to adjust training procedure
+        w_tilde = torch.clamp(-eps_grads, min=0)
+        l1_norm = torch.sum(w_tilde)
+        w = w_tilde / l1_norm if l1_norm != 0 else w_tilde
+
+        outputs = cnn_model(img)
+        loss_fn.reduction = 'none'
+        loss = loss_fn(outputs, labels)
+
+        # Apply computed weights to loss
+        weighted_loss = torch.sum(w * loss)
+        weighted_loss.backward()
         optimizer.step()
 
-    print(f"Running epoch: {epoch} | Loss: {loss.item()}")
-
+    print(f"Running epoch: {epoch} | Loss: {weighted_loss.item()}")
     if epoch % 5 == 0 and epoch != 0:
         compute_accuracy()
 
