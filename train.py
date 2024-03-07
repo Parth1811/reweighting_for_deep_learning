@@ -135,9 +135,9 @@ for epoch in range(args.epoch):
 acc = compute_accuracy(cnn_model, test_loader)
 logger.info(f"Accuracy: {acc:.2f}%")
 if args.save:
-    save_path = os.path.join(args.save_path, f"{args.anme}.pth")
+    save_path = os.path.join(args.save_path, f"{args.name}.pth")
     logger.log(45, f"Saving model at {save_path}")
-    torch.save(cnn_model.state_dict(), os.path.join(args.save_path, f"{args.anme}.pth"))
+    torch.save(cnn_model.state_dict(), os.path.join(args.save_path, f"{args.name}.pth"))
 
 logger.info('Training is finished')
 logger.log(25, "Saved log file " + log_file_path)
