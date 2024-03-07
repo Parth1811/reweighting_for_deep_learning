@@ -39,7 +39,8 @@ class AlexNet(nn.Module):
         x = torch.flatten(x, 1)
         x = self.classifier(x)
         return x
-
+#transform
+    
     @staticmethod
     def get_input_transform(mean, cov):
         return transforms.Compose([

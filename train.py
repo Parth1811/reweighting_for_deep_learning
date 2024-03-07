@@ -9,16 +9,44 @@ from tqdm import tqdm
 
 from dataloaders import ImbalancedCIFAR10Dataset
 from loss import get_weighted_loss
-from model import myCNN
+#from model import myCNN
+from alexNet import AlexNet
+from utils import (create_folders, compute_accuracy, get_run_uuid, stratified_split, setup_logger, calculate_class_distribution)
+
+
+RUN_UUID = get_run_uuid()
+
+parser = argparse.ArgumentParser("Learning Reweight for Classification - Toy Problem")
+parser.add_argument("-n", "--name", type=str, default=RUN_UUID, help="Name of the run")
+parser.add_argument("-e", "--epoch", type=int, default=50, help="Number of Epoch")
+parser.add_argument("-lr", "--learning-rate", type=float, default=0.001, help="Learning Rate")
+parser.add_argument("-s", "--save", action="store_true", default=True, help="Save the model after running")
+parser.add_argument("-l", "--load", type=str, default=None, help="Load the model from path before running")
+parser.add_argument("-ld", "--log_dir", type=str, default='./run_data/log', help='directory of log')
+parser.add_argument("-sp", "--save-path", type=str, default="./run_data", help="Path to save the model and checkpoints")
+parser.add_argument("-c", "--checkpoint", type=int, default=10, help="Set checkpoint interval")
+parser.add_argument("-sc", "--save-checkpoints", action="store_true", default=False, help="Save the model checkpoints while running")
+parser.add_argument("-ca", "--print-checkpoint-accuracy", action="store_true", default=False, help="Print model accuracy for checkpoints")
+args = parser.parse_args()
+
+create_folders([args.save_path, args.log_dir])
 
 # CIFAR-10 mean and cov values
 mu = (0.5, 0.5, 0.5)
 cov = (0.5, 0.5, 0.5)
 
-train_dataset = datasets.CIFAR10("~/.torch/data", train=True, transform=myCNN.get_input_transform(mu, cov))
-train_loader = utils.data.DataLoader(train_dataset, shuffle=True, batch_size=64)
+# ----------------- Load the CIFAR-10 Train Dataset ---------------------------
+train_dataset = datasets.CIFAR10("~/.torch/data", train=True, transform=AlexNet.get_input_transform(mu, cov))
+train_idx, val_idx = stratified_split(train_dataset, test_size=0.001)
+train_subset = Subset(train_dataset, train_idx)
+val_subset = Subset(train_dataset, val_idx)
 
-test_dataset = datasets.CIFAR10("~/.torch/data", train=False, transform=myCNN.get_input_transform(mu, cov))
+imbalanced_train_dataset = ImbalancedCIFAR10Dataset(train_subset, dominant_class=2, percentage=0.9)
+train_loader = utils.data.DataLoader(imbalanced_train_dataset, shuffle=True, batch_size=64)
+val_loader = utils.data.DataLoader(val_subset, shuffle=False, batch_size=64)
+
+# ----------------- Load the CIFAR-10 Test Dataset ---------------------------
+test_dataset = datasets.CIFAR10("~/.torch/data", train=False, transform=AlexNet.get_input_transform(mu, cov))
 test_loader = utils.data.DataLoader(test_dataset, shuffle=False, batch_size=64)
 
 
@@ -42,9 +70,15 @@ class_distribution_val = calculate_class_distribution(val_loader)
 logger.info(f"Validation Dataset Class Distribution: {class_distribution_val}")
 
 
-cnn_model = myCNN()
-loss_fn = nn.CrossEntropyLoss()
-optimizer = optim.SGD(cnn_model.parameters(), lr=0.001, momentum=0.9)
+cnn_model = AlexNet()
+if args.load is not None:
+    cnn_model.load_state_dict(torch.load(args.load))
+
+optimizer = optim.SGD(cnn_model.parameters(), lr=args.learning_rate, momentum=0.9)
+loss_fn_mean_red = nn.CrossEntropyLoss(reduction="mean")
+loss_fn_no_red = nn.CrossEntropyLoss(reduction="none")
+
+
 device = torch.device("cpu")
 logger.info('Training has Started')
 for epoch in range(args.epoch):
