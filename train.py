@@ -3,20 +3,24 @@ from torch import nn, optim, utils
 from torchvision import transforms, datasets
 
 from model import myCNN
+from alexNet import AlexNet
 
 # CIFAR-10 mean and cov values
 mu = (0.5, 0.5, 0.5)
 cov = (0.5, 0.5, 0.5)
 
-train_dataset = datasets.CIFAR10("~/.torch/data", train=True, transform=myCNN.get_input_transform(mu, cov))
+train_dataset = datasets.CIFAR10("~/.torch/data", train=True, download=True, transform=AlexNet.get_input_transform(mu, cov))
 train_loader = utils.data.DataLoader(train_dataset, shuffle=True, batch_size=64)
 
-test_dataset = datasets.CIFAR10("~/.torch/data", train=False, transform=myCNN.get_input_transform(mu, cov))
+test_dataset = datasets.CIFAR10("~/.torch/data", train=False,download=True, transform=AlexNet.get_input_transform(mu, cov))
 test_loader = utils.data.DataLoader(test_dataset, shuffle=False, batch_size=64)
 
-cnn_model = myCNN()
+#cnn_model = myCNN()
+cnn_model = AlexNet()
 loss_fn = nn.CrossEntropyLoss()
-optimizer = optim.SGD(cnn_model.parameters(), lr=0.001, momentum=0.9)
+#optimizer = optim.SGD(cnn_model.parameters(), lr=0.001, momentum=0.9)
+optimizer = optim.Adam(cnn_model.parameters(), lr=0.001)
+
 device = torch.device("cpu")
 
 cnn_model.train()
