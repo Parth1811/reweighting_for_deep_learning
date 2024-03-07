@@ -121,17 +121,19 @@ for epoch in range(args.epoch):
         
         optimizer.step()
 
-    logger.log(15, f"Epoch: {epoch} | Loss: {weighted_loss.item()}")
+    logger.log(35, f"Epoch: {epoch} | Loss: {weighted_loss.item()}")
     progressbar.update(1)
     if epoch % args.checkpoint == 0 and epoch != 0:
         if args.print_checkpoint_accuracy:
-            compute_accuracy(cnn_model, test_loader)
+            acc = compute_accuracy(cnn_model, test_loader)
+            logger.info(f"Accuracy: {acc:.2f}%")
         if args.save_checkpoints:
             save_path = os.path.join(args.save_path, f"{args.name}_checkpoint_{epoch // args.checkpoint}.pth")
             logger.log(45, f"Saving model checkpoint at {save_path}")
             torch.save(cnn_model.state_dict(), save_path)
 
-compute_accuracy(cnn_model, test_loader)
+acc = compute_accuracy(cnn_model, test_loader)
+logger.info(f"Accuracy: {acc:.2f}%")
 if args.save:
     save_path = os.path.join(args.save_path, f"{args.anme}.pth")
     logger.log(45, f"Saving model at {save_path}")

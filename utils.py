@@ -34,7 +34,7 @@ def compute_accuracy(cnn_model, test_loader):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-    print(f"Accuracy: {correct / total * 100:.2f}%")
+    return correct / total * 100
 
 def get_run_uuid():
     return datetime.now().strftime("%d_%m_%Y__%H_%M_%S")
