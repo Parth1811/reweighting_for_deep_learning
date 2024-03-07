@@ -4,6 +4,9 @@ from torchvision import transforms, datasets
 from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler, Subset
 from sklearn.model_selection import train_test_split
 import numpy as np
+import random
+
+from loss import get_weighted_loss
 from model import myCNN
 from dataloaders import ImbalancedCIFAR10Dataset
 
@@ -23,6 +26,7 @@ def calculate_class_distribution(loader):
         for label in labels:
             class_counts[label] += 1
     return class_counts
+
 
 # CIFAR-10 mean and cov values
 mu = (0.5, 0.5, 0.5)
@@ -51,7 +55,9 @@ test_dataset = datasets.CIFAR10("~/.torch/data", train=False, transform=myCNN.ge
 test_loader = utils.data.DataLoader(test_dataset, shuffle=False, batch_size=64)
 
 cnn_model = myCNN()
-loss_fn = nn.CrossEntropyLoss()
+class_weights, weighted_loss_fn = get_weighted_loss(None)
+unweighted_loss_fn = nn.CrossEntropyLoss()
+
 optimizer = optim.SGD(cnn_model.parameters(), lr=0.001, momentum=0.9)
 device = torch.device("cpu")
 
@@ -72,10 +78,50 @@ for epoch in range(30):
 
     loss = 0
     cnn_model.train()
-    for images, labels in train_loader:
+
+
+    # TODO(@Parth): This only in case of CIFAR-10 where validation set only has one mini batch.
+    #               Need to figure out a way to get random samples from the val_loader
+    val_img, val_labels = next(iter(val_loader))
+
+    for img, labels in train_loader:
+
         optimizer.zero_grad()
-        out = cnn_model(images)
-        loss = loss_fn(out, labels)
+        out = cnn_model(img)
+        loss = weighted_loss_fn(out, labels)
+        current_params = [param.clone().detach() for param in cnn_model.parameters()]
+        loss.backward()
+        optimizer.step()
+        grads_a = [param.grad for param in cnn_model.parameters()]
+
+
+
+        optimizer.zero_grad()
+        val_out = cnn_model(val_img)
+        loss = unweighted_loss_fn(val_out, val_labels)
+        loss.backward()
+        optimizer.step()
+        grads_b = [param.grad for param in cnn_model.parameters()]
+
+        grads_ex_wts = torch.autograd.grad(grads_a, [class_weights], grads_b, create_graph=True)
+
+
+        weights = torch.max(-grads_ex_wts, 0)
+        weights_norm = torch.sum(weights)
+        weights_norm = weights_norm if weights_norm != 0 else 0
+        class_weights = weights / weights_norm
+
+
+        class_weights, weighted_loss_fn = get_weighted_loss(class_weights)
+        
+        with torch.no_grad():
+            for param, current_param in zip(cnn_model.parameters(), current_params):
+                param.copy_(current_param)
+
+        optimizer.zero_grad()
+        out = cnn_model(img)
+        loss = weighted_loss_fn(out, labels)
+        current_params = [param.clone().detach() for param in cnn_model.parameters()]
         loss.backward()
         optimizer.step()
 
