@@ -1,14 +1,34 @@
+import argparse
 import torch
 from torch import nn, optim, utils
 from torchvision import datasets
 from torch.utils.data import Subset
-import higher 
+import higher
+import os
 
 from dataloaders import ImbalancedCIFAR10Dataset
 from loss import get_weighted_loss
 from model import myCNN
-from utils import calculate_class_distribution, compute_accuracy, stratified_split
+from utils import calculate_class_distribution, compute_accuracy, get_run_uuid, stratified_split
 
+
+RUN_UUID = get_run_uuid()
+
+parser = argparse.ArgumentParser("Learning Reweight for Classification - Toy Problem")
+parser.add_argument("-n", "--name", type=str, default=RUN_UUID, help="Name of the run")
+parser.add_argument("-e", "--epoch", type=int, default=50, help="Number of Epoch")
+parser.add_argument("-lr", "--learning-rate", type=float, default=0.001, help="Learning Rate")
+parser.add_argument("-s", "--save", action="store_true", default=True, help="Save the model after running")
+parser.add_argument("-l", "--load", type=str, default=None, help="Load the model from path before running")
+parser.add_argument("-sp", "--save-path", type=str, default="./run_data", help="Path to save the model and checkpoints")
+parser.add_argument("-c", "--checkpoint", type=int, default=10, help="Set checkpoint interval")
+parser.add_argument("-sc", "--save-checkpoints", action="store_true", default=False, help="Save the model checkpoints while running")
+parser.add_argument("-ca", "--print-checkpoint-accuracy", action="store_true", default=False, help="Print model accuracy for checkpoints")
+args = parser.parse_args()
+
+
+if not os.path.exists(args.save_path):
+    os.makedirs(args.save_path)
 
 # CIFAR-10 mean and cov values
 mu = (0.5, 0.5, 0.5)
@@ -37,19 +57,16 @@ test_dataset = datasets.CIFAR10("~/.torch/data", train=False, transform=myCNN.ge
 test_loader = utils.data.DataLoader(test_dataset, shuffle=False, batch_size=64)
 
 cnn_model = myCNN()
-class_weights, weighted_loss_fn = get_weighted_loss(None)
-unweighted_loss_fn = nn.CrossEntropyLoss()
+if args.load is not None:
+    cnn_model.load_state_dict(torch.load(args.load))
 
-optimizer = optim.SGD(cnn_model.parameters(), lr=0.001, momentum=0.9)
-device = torch.device("cpu")
-
-
-cnn_model = myCNN()#.to(device)
-optimizer = optim.SGD(cnn_model.parameters(), lr=0.001, momentum=0.9)
+optimizer = optim.SGD(cnn_model.parameters(), lr=args.learning_rate, momentum=0.9)
 loss_fn_mean_red = nn.CrossEntropyLoss(reduction="mean")
 loss_fn_no_red = nn.CrossEntropyLoss(reduction="none")
 
-for epoch in range(60):
+
+device = torch.device("cpu")
+for epoch in range(args.epoch):
     cnn_model.train()
 
     for img, labels in train_loader:
@@ -91,7 +108,16 @@ for epoch in range(60):
         optimizer.step()
 
     print(f"Running epoch: {epoch} | Loss: {weighted_loss.item()}")
-    if epoch % 5 == 0 and epoch != 0:
-        compute_accuracy(cnn_model, test_loader)
+    if epoch % args.checkpoint == 0 and epoch != 0:
+        if args.print_checkpoint_accuracy:
+            compute_accuracy(cnn_model, test_loader)
+        if args.save_checkpoints:
+            save_path = os.path.join(args.save_path, f"{args.name}_checkpoint_{epoch // args.checkpoint}.pth")
+            print(f"Saving model checkpoint at {save_path}")
+            torch.save(cnn_model.state_dict(), save_path)
 
 compute_accuracy(cnn_model, test_loader)
+if args.save:
+    save_path = os.path.join(args.save_path, f"{args.anme}.pth")
+    print(f"Saving model at {save_path}")
+    torch.save(cnn_model.state_dict(), os.path.join(args.save_path, f"{args.anme}.pth"))

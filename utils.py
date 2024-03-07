@@ -1,3 +1,4 @@
+from datetime import datetime
 import torch
 from sklearn.model_selection import train_test_split
 
@@ -29,3 +30,6 @@ def compute_accuracy(cnn_model, test_loader):
             correct += (predicted == labels).sum().item()
 
     print(f"Accuracy: {correct / total * 100:.2f}%")
+
+def get_run_uuid():
+    return datetime.now().strftime("%d_%m_%Y__%H_%M_%S")
